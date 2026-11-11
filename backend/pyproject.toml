@@ -1,0 +1,14 @@
+# Tooling configuration. The app itself is configured through environment variables (see app/core/config.py).
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+extend-exclude = ["venv"]
+
+[tool.ruff.lint]
+# The rules that find real defects: unused or undefined names (F), likely bugs (B), syntax and statement problems (E7, E9).
+select = ["F", "B", "E7", "E9", "C4"]
+ignore = [
+  "B008",  # FastAPI's Depends(...) in argument defaults is the framework's idiom
+  "E731",  # a short lambda in a test is fine
+]

@@ -1,0 +1,65 @@
+# Production-style stack: Caddy (HTTPS) -> API -> Postgres.
+#
+#   cp .env.production.example .env.production   # then fill it in
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# Only Caddy publishes ports. The API and database are reachable only on the private
+# Docker network, which is what makes it safe for the API to trust X-Forwarded-For.
+name: banking-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: banking
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d banking"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    user: "10001:10001" # not root
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://bank:${POSTGRES_PASSWORD}@db:5432/banking
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (32+ random characters)}
+      CORS_ORIGINS: "[]" # the mobile app is not a browser, so no cross-origin access is needed
+      DEMO_MODE: ${DEMO_MODE:-true} # set to false for a real deployment: removes fake deposits/SMS/card simulator
+    depends_on:
+      db:
+        condition: service_healthy
+    # One explicit string (a YAML folded block would turn my line breaks into separate shell
+    # commands and silently drop the proxy flags). `exec` makes uvicorn the main process.
+    command:
+      - sh
+      - -c
+      - "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    # no `ports:` on purpose
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates live here: keep this volume
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

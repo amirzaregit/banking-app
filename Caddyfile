@@ -1,0 +1,8 @@
+# With a real domain (DOMAIN=api.example.com) Caddy requests and renews a Let's Encrypt
+# certificate by itself and redirects http -> https. With DOMAIN=localhost it uses its own
+# local certificate authority, which is handy for testing this setup on your machine.
+{$DOMAIN:localhost} {
+	encode zstd gzip
+	reverse_proxy api:8000
+	header -Server
+}

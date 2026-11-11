@@ -1,0 +1,36 @@
+# Host ports are 5444/8100 because 5432/8000 are used by other local projects.
+services:
+  db:
+    restart: unless-stopped  # come back by themselves after a reboot
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: bank
+      POSTGRES_DB: banking
+    ports:
+      - "5444:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d banking"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  api:
+    restart: unless-stopped
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://bank:bank@db:5432/banking
+      SECRET_KEY: dev-only-change-me-dev-only-change-me
+    ports:
+      - "8100:8000"
+    volumes:
+      - ./backend:/srv
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:
